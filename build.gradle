@@ -23,7 +23,7 @@ buildscript {
         classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.0'
     }
 }
-
+apply plugin: "org.jetbrains.kotlin.jvm"
 apply plugin: "org.junit.platform.gradle.plugin"
 apply plugin: 'com.github.johnrengelman.shadow'
 
@@ -56,9 +56,9 @@ dependencies {
     compile 'io.github.microutils:kotlin-logging:1.4.6'
     
     // Project specific dependencies (disabled by default)
-    //compile 'com.github.zensum:franz:master-SNAPSHOT'
+    compile 'com.github.zensum:franz:a53b63b'
     //compile 'com.github.zensum:secret-connector:0.2.1'
-    //compile 'com.github.zensum:idempotence-connector:0.2.2'
+    compile 'com.github.zensum:idempotence-connector:0.2.2'
     //compile 'com.github.zensum:mail-proto:master-SNAPSHOT'
     //compile 'com.github.zensum:sms-proto:master-SNAPSHOT'
     //compile 'com.github.zensum:webhook-proto:0.1.1'
