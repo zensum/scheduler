@@ -1,0 +1,17 @@
+version: '3'
+services:
+  redis:
+    image: redis:latest
+
+  service_under_test:
+    depends_on:
+       - redis
+    environment:
+       REDIS_URL: "redis://redis"
+    image: gcr.io/zens-main/idempotence_store:$CIRCLE_SHA1 
+
+  testit:
+    depends_on:
+       - service_under_test
+    build:
+      context: .
