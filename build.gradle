@@ -81,7 +81,7 @@ junitPlatform {
 
 jar {
     manifest {
-        attributes 'Main-Class': "se.zensum.KotlinMainClassKt"
+        attributes 'Main-Class': "scheduler.MainKt"
     }
 }
 

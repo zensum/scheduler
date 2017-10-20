@@ -2,12 +2,16 @@ package scheduler
 
 import franz.ProducerBuilder
 import franz.WorkerBuilder
+import kotlinx.coroutines.experimental.async
+import kotlinx.coroutines.experimental.channels.Channel
+import kotlinx.coroutines.experimental.delay
+import kotlinx.coroutines.experimental.runBlocking
+import kotlinx.coroutines.experimental.selects.selectUnbiased
 import java.nio.ByteBuffer
 import java.util.PriorityQueue
-import java.util.concurrent.ConcurrentSkipListSet
-import java.util.concurrent.atomic.AtomicBoolean
 import se.zensum.idempotenceconnector.IdempotenceStore
-import java.util.concurrent.CompletableFuture
+
+import java.util.concurrent.TimeUnit
 
 // A message to publish
 data class ToPublish(val topic: String,
@@ -32,69 +36,38 @@ val idem = IdempotenceStore("scheduler")
 
 fun epoch() = System.currentTimeMillis() / 1000
 
-inline fun swallowInterrupted(fn: () -> Unit)  {
-    try { fn() }
-    catch (ex: InterruptedException) {}
-}
-
-// Optimistic retry, keeps track of a number of threads in a critical section.
-// If tripped they are all interrupted and the task is retried.
-class OptimisticRetry {
-    private val notify = ConcurrentSkipListSet<Thread>()
-    fun guarded(fn: () -> Unit) {
-        val th = Thread.currentThread()
-        try {
-            // After we are added to notify we
-            // may get an interrupted exception anytime.
-            // Before we call fn(), Interrupts don't
-            // warrant a retry as nothing has been done.
-            swallowInterrupted {
-                notify.add(th)
-            }
-            var complete = false
-            while(!complete) {
-                swallowInterrupted {
-                    fn()
-                    // Flag that we're are done and stop retrying
-                    complete = true
-                }
-            }
-        } finally {
-            // under any other circumstances remove us from notify
-            notify.remove(th)
-        }
-    }
-    fun trip() {
-        notify.forEach {
-            it.interrupt()
-        }
-    }
-}
-
 // The queue task represents the priority heap used for storing tasks,
 // it allows waiting until the top most item is ripe for removing
 class Queue {
-    private val closed = AtomicBoolean(false)
     private val tasks = PriorityQueue<ScheduledTask>()
-    private val retry = OptimisticRetry()
-    fun add(t: ScheduledTask) = tasks.add(t).also { retry.trip() }
+    private val wakeCh = Channel<Unit>()
+    suspend fun add(t: ScheduledTask) = tasks.add(t).also { wakeCh.send(Unit) }
     fun takeBelow(l: Long): ScheduledTask? = tasks.peek().let {
         if (it != null && it.time < l) tasks.poll() else null
     }
-    fun waitAsRequired() {
-        retry.guarded {
-            val now = epoch()
-            val sleepEnd = tasks.peek()?.time ?: Long.MAX_VALUE
-            val sleepUntil = sleepEnd - now
-            if (sleepUntil > 0) {
-                Thread.sleep(sleepUntil * 1000)
+    private fun sleepTime(): Long {
+        val now = epoch()
+        val sleepEnd = tasks.peek()?.time ?: Long.MAX_VALUE
+        return sleepEnd - now
+    }
+    suspend fun waitAsRequired() {
+        val sleepFor = sleepTime()
+        if (sleepFor < 1) {
+            return
+        }
+        selectUnbiased<Unit> {
+            wakeCh.onReceive {
+                waitAsRequired()
+            }
+            async {
+                delay(sleepFor, TimeUnit.SECONDS)
             }
         }
     }
-    fun closed() = closed.get()
+    fun closed() = wakeCh.isClosedForSend
 }
 
-fun queueWorker(q: Queue, onItem: (ScheduledTask) -> Unit) = Thread {
+suspend fun queueWorker(q: Queue, onItem: suspend (ScheduledTask) -> Unit) = async {
     while(!q.closed()) {
         val t = epoch()
         var item: ScheduledTask? = q.takeBelow(t)
@@ -104,25 +77,18 @@ fun queueWorker(q: Queue, onItem: (ScheduledTask) -> Unit) = Thread {
         }
         q.waitAsRequired()
     }
-}.also { it.start() }
-
-// Gets tasks for publishing, checks idempotence then publishes.
-class Publisher {
-    private val p = ProducerBuilder.ofByteArray.create()
-    fun publish(t: ScheduledTask) {
-        idem.containsAsync(t.id.toString())
-            .thenCompose {
-                if (!it.isFound()) {
-                    val d = t.data
-                    p.sendAsync(d.topic, d.key, d.data.array()).thenAccept {
-                        // Worked!
-                    }
-                } else {
-                    CompletableFuture<Any?>().also { it.complete(null) }.thenAccept {}
-                }
-            }
-    }
 }
+
+private val producer = ProducerBuilder.ofByteArray.create()
+suspend fun publish(t: ScheduledTask) {
+    val found = idem.contains(t.id.toString())
+    if (found) {
+        return
+    }
+    val d = t.data
+    producer.send(d.topic, d.key, d.data.array())
+}
+
 
 fun runConsumer(q: Queue) {
     WorkerBuilder.ofByteArray.handlePiped {
@@ -135,9 +101,8 @@ fun runConsumer(q: Queue) {
             .end()
     }.start()
 }
-fun main(args: Array<String>) {
-    val p = Publisher()
+fun main(args: Array<String>) = runBlocking {
     val q = Queue()
-    queueWorker(q, p::publish)
+    queueWorker(q) { publish(it) }
     runConsumer(q)
 }
