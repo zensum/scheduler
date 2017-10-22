@@ -138,7 +138,7 @@ artifacts {
 }
 
 task run(type: JavaExec) {
-    main = 'se.zensum.KotlinMainClassKt' //Important that 'Kt' is appended to class name
+    main = 'scheduler.MainKt'//Important that 'Kt' is appended to class name
     classpath = sourceSets.main.runtimeClasspath
 }
 
