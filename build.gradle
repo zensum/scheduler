@@ -57,6 +57,7 @@ dependencies {
     
     // Project specific dependencies (disabled by default)
     compile 'com.github.zensum:franz:a53b63b'
+    compile 'com.github.zensum:scheduler-proto:f73b532' 
     //compile 'com.github.zensum:secret-connector:0.2.1'
     compile 'com.github.zensum:idempotence-connector:0.2.2'
     //compile 'com.github.zensum:mail-proto:master-SNAPSHOT'
