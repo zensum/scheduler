@@ -1,0 +1,15 @@
+replicaCount: 1
+image:
+  repository: gcr.io/zens-main/scheduler
+  tag: latest
+  pullPolicy: IfNotPresent
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+env:
+  kafkaHost: zens-kafka-kafka:9092
+  idempotenceStoreUrl: "svc-idempotence-store-idempotence-store"
