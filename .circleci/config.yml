@@ -86,3 +86,8 @@ workflows:
 
       - docker-build:
           context: org-global
+
+      - gcloud-deploy:
+          context: org-global
+          requires:
+            - docker-build
