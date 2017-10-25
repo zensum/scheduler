@@ -112,8 +112,9 @@ fun main(args: Array<String>) = runBlocking {
         producer.close()
 
     })
-    while(true) {
+    runConsumer(q)
+    /*while(true) {
         putExample(q)
         Thread.sleep(1000)
-    }
+    }*/
 }
