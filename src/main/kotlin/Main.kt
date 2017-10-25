@@ -52,6 +52,8 @@ fun queueWorker(q: Queue, onItem: suspend (ScheduledTask) -> Unit) = Thread { ru
     }
 }}.also { it.start() }
 
+private val logger = KotlinLogging.logger("scheduler")
+
 private val producer = ProducerBuilder.ofByteArray.create()
 suspend fun publish(t: ScheduledTask) {
     val found = idem.contains(t.idAsString())
@@ -67,9 +69,10 @@ suspend fun publish(t: ScheduledTask) {
     }
 }
 
-suspend fun runConsumer(q: Queue) =
+fun runConsumer(q: Queue) =
     WorkerBuilder.ofByteArray
         .subscribedTo(TOPIC)
+        .groupId("scheduler")
         .handlePiped {
         it
             .map { it.value() }
