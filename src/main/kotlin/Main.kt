@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import se.zensum.scheduler_proto.Scheduler.Task
 import java.nio.charset.Charset
-
+import mu.KotlinLogging
 const val TOPIC = "scheduler"
 
 // A scheduled task
@@ -61,6 +61,10 @@ suspend fun publish(t: ScheduledTask) {
     val d = t.data()
     producer.send(d.topic, d.key, d.body.toByteArray())
     idem.put(t.idAsString())
+    logger.info {
+        val delta = t.getDelay(TimeUnit.MILLISECONDS)
+        "Published task ${t.idAsString()} delta = $delta"
+    }
 }
 
 suspend fun runConsumer(q: Queue) =
@@ -92,6 +96,7 @@ suspend fun putExample(q: Queue) {
         setTime(time)
         kmsg = tp
     }.build()
+    logger.info("Publ example $b")
     producer.send(TOPIC, b.toByteArray())
 }
 
