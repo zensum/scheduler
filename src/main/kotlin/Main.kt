@@ -10,6 +10,7 @@ import se.zensum.scheduler_proto.Scheduler.Task
 import java.nio.charset.Charset
 import java.time.Instant
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.DelayQueue
 import java.util.concurrent.Delayed
 import java.util.concurrent.TimeUnit
@@ -38,6 +39,7 @@ data class ScheduledTask(private val task: Task, private val time: Long): Delaye
         if (shouldReschedule())
             copy(time = nextTime())
         else null
+    fun id() = task.id
     fun idAsString() = task.id.toString()
     fun data() = task.kmsg
 }
@@ -76,9 +78,7 @@ fun queueWorker(q: Queue, onItem: suspend (ScheduledTask) -> Unit) = Thread { ru
 private fun updateQueue(item: ScheduledTask, q: Queue) {
     val nextInstance: ScheduledTask? = item.nextInstance()
     if (nextInstance == null) {
-        synchronized(item) {
-            removed.remove(item.idAsString())
-        }
+        removed.remove(item.id())
     } else {
         q.add(nextInstance)
     }
@@ -89,7 +89,7 @@ suspend fun publish(t: ScheduledTask) {
     if (!t.isRepeating() && idem.contains(t.idAsString())) {
         return
     }
-    val isRemoved = removed.get(t.idAsString())
+    val isRemoved = removed[t.id()]
     if (isRemoved != null && isRemoved) {
         return
     }
@@ -107,7 +107,7 @@ suspend fun publish(t: ScheduledTask) {
     }
 }
 
-var removed: MutableMap<String, Boolean> = HashMap()
+var removed: MutableMap<Long, Boolean> = ConcurrentHashMap()
 
 fun runConsumer(q: Queue) =
     WorkerBuilder.ofByteArray
@@ -119,7 +119,7 @@ fun runConsumer(q: Queue) =
             .map { readScheduledTask(it) }
             .advanceIf { !it.isExpired() }
             .execute {
-                removed.put(it.idAsString(), it.isRemoved())
+                removed.put(it.id(), it.isRemoved())
                 true
             }
             .advanceIf { !idem.contains(it.idAsString()) } // Ugly longs
