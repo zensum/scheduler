@@ -4,17 +4,16 @@ import com.google.protobuf.ByteString
 import franz.ProducerBuilder
 import franz.WorkerBuilder
 import kotlinx.coroutines.experimental.runBlocking
-import mu.KLogging
+import mu.KotlinLogging
 import se.zensum.idempotenceconnector.IdempotenceStore
-import java.util.Random
+import se.zensum.scheduler_proto.Scheduler.Task
+import java.nio.charset.Charset
+import java.time.Instant
+import java.util.*
 import java.util.concurrent.DelayQueue
 import java.util.concurrent.Delayed
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import se.zensum.scheduler_proto.Scheduler.Task
-import java.nio.charset.Charset
-import mu.KotlinLogging
-import java.time.Instant
 
 const val TOPIC = "scheduler"
 
@@ -32,13 +31,13 @@ data class ScheduledTask(private val task: Task, private val time: Long): Delaye
         unit!!.convert(fromNow(time), TimeUnit.SECONDS)
     fun isExpired(): Boolean = task.expires != 0L && epoch() > task.expires
     fun isRepeating() = task.interval != 0 && task.expires != 0L
+    fun isRemoved() = task.remove
     private fun shouldReschedule() = isRepeating() && !isExpired()
     private fun nextTime(): Long = time + task.interval
     fun nextInstance(): ScheduledTask? =
         if (shouldReschedule())
             copy(time = nextTime())
         else null
-
     fun idAsString() = task.id.toString()
     fun data() = task.kmsg
 }
@@ -70,15 +69,28 @@ fun queueWorker(q: Queue, onItem: suspend (ScheduledTask) -> Unit) = Thread { ru
     while(!q.closed()) {
         val item = q.take()
         onItem(item)
-        item.nextInstance()?.let {
-            q.add(it)
-        }
+        updateQueue(item, q)
     }
 }}.also { it.start() }
+
+private fun updateQueue(item: ScheduledTask, q: Queue) {
+    val nextInstance: ScheduledTask? = item.nextInstance()
+    if (nextInstance == null) {
+        synchronized(item) {
+            removed.remove(item.idAsString())
+        }
+    } else {
+        q.add(nextInstance)
+    }
+}
 
 private val producer = ProducerBuilder.ofByteArray.create()
 suspend fun publish(t: ScheduledTask) {
     if (!t.isRepeating() && idem.contains(t.idAsString())) {
+        return
+    }
+    val isRemoved = removed.get(t.idAsString())
+    if (isRemoved != null && isRemoved) {
         return
     }
     val d = t.data()
@@ -91,9 +103,11 @@ suspend fun publish(t: ScheduledTask) {
     idem.put(t.idAsString())
     logger.info {
         val delta = t.getDelay(TimeUnit.MILLISECONDS)
-        "Published task ${t.idAsString()} delta = $delta repeating=${t.isRepeating()} expired=${t.isExpired()} took=${prodMS}"
+        "Published task ${t.idAsString()} delta = $delta repeating=${t.isRepeating()} expired=${t.isExpired()} took=$prodMS prodTook=$prodTook"
     }
 }
+
+var removed: MutableMap<String, Boolean> = HashMap()
 
 fun runConsumer(q: Queue) =
     WorkerBuilder.ofByteArray
@@ -104,6 +118,10 @@ fun runConsumer(q: Queue) =
             .map { it.value() }
             .map { readScheduledTask(it) }
             .advanceIf { !it.isExpired() }
+            .execute {
+                removed.put(it.idAsString(), it.isRemoved())
+                true
+            }
             .advanceIf { !idem.contains(it.idAsString()) } // Ugly longs
             .execute { q.add(it) }
             .success()
@@ -116,17 +134,18 @@ val tp = Task.KMsg.newBuilder().apply {
     key = "normies"
     topic = "foo"
 }.build()
-
-suspend fun putExample(q: Queue) {
+val ids = rnd.nextLong()
+suspend fun putExample(remove: Boolean) {
     //val offset = rnd.nextInt(60)
     val time = epoch() + 1
 
     val b = Task.newBuilder().apply {
-        id = rnd.nextLong()
+        id = ids
         setTime(time)
         kmsg = tp
-        expires = epoch() + 30
+        expires = epoch() + 10
         interval = 1
+        this.remove = remove
     }.build()
     logger.info("Publ example $b")
     producer.send(TOPIC, b.toByteArray())
@@ -141,9 +160,10 @@ fun main(args: Array<String>) = runBlocking {
         producer.close()
     })
     runConsumer(q)
-    var i = 3
-    while(i-- > 0) {
-        putExample(q)
-        Thread.sleep(1000)
-    }
+    /*
+    delay(10000)
+    putExample(false)
+    delay(6000)
+    putExample( true)
+    */
 }
