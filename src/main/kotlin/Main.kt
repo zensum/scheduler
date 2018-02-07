@@ -70,8 +70,10 @@ class Queue {
 fun queueWorker(q: Queue, onItem: suspend (ScheduledTask) -> Unit) = Thread { runBlocking {
     while(!q.closed()) {
         val item = q.take()
-        onItem(item)
-        updateQueue(item, q)
+        if (!item.isExpired() || !item.isRepeating()) {
+            onItem(item)
+            updateQueue(item, q)
+        }
     }
 }}.also { it.start() }
 
