@@ -9,7 +9,7 @@ import se.zensum.idempotenceconnector.IdempotenceStore
 import se.zensum.scheduler_proto.Scheduler.Task
 import java.nio.charset.Charset
 import java.time.Instant
-import java.util.*
+import java.util.Random
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.DelayQueue
 import java.util.concurrent.Delayed
@@ -31,10 +31,10 @@ data class ScheduledTask(private val task: Task, private val time: Long): Delaye
     override fun getDelay(unit: TimeUnit?): Long =
         unit!!.convert(fromNow(time), TimeUnit.SECONDS)
     fun isExpired(): Boolean = task.expires != 0L && epoch() > task.expires
-    fun isRepeating() = task.interval != 0 && task.expires != 0L
+    fun isRepeating() = task.intervalSeconds != 0 && task.expires != 0L
     fun isRemoved() = task.remove
     private fun shouldReschedule() = isRepeating() && !isExpired()
-    private fun nextTime(): Long = time + task.interval
+    private fun nextTime(): Long = time + task.intervalSeconds
     fun nextInstance(): ScheduledTask? =
         if (shouldReschedule())
             copy(time = nextTime())
@@ -46,7 +46,7 @@ data class ScheduledTask(private val task: Task, private val time: Long): Delaye
 
 fun readScheduledTask(x: ByteArray): ScheduledTask =
     ScheduledTask(Task.parseFrom(x)!!.also {
-        if (it.expires == 0L && it.interval != 0) {
+        if (it.expires == 0L && it.intervalSeconds != 0) {
             logger.warn("WARNING: messages w/ intervals must an expiry. id=${it.id}")
         }
     })
@@ -144,7 +144,7 @@ suspend fun putExample(remove: Boolean) {
         setTime(time)
         kmsg = tp
         expires = epoch() + 10
-        interval = 1
+        intervalSeconds = 1
         this.remove = remove
     }.build()
     logger.info("Publ example $b")
