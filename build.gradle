@@ -57,13 +57,12 @@ dependencies {
     
     // Project specific dependencies (disabled by default)
     compile 'com.github.zensum:franz:a53b63b'
-    compile 'com.github.zensum:scheduler-proto:f73b532' 
+    compile 'com.github.zensum:scheduler-proto:bd87073b'
     //compile 'com.github.zensum:secret-connector:0.2.1'
     compile 'com.github.zensum:idempotence-connector:0.2.2'
     runtime 'ch.qos.logback:logback-classic:1.2.3'
     //compile 'com.github.zensum:mail-proto:master-SNAPSHOT'
     //compile 'com.github.zensum:sms-proto:master-SNAPSHOT'
-    //compile 'com.github.zensum:webhook-proto:0.1.1'
     //compile 'com.github.zensum:ktor-prometheus-feature:master-SNAPSHOT'
     //compile 'com.github.zensum:ktor-sentry-feature:master-SNAPSHOT'
     //compile 'com.github.zensum:ktor-health-check:master-SNAPSHOT'
