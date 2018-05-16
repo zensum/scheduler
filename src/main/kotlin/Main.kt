@@ -119,6 +119,7 @@ fun runConsumer(q: Queue) =
         it
             .map { it.value() }
             .map { readScheduledTask(it) }
+            .sideEffect { logger.debug { "Reading scheduled task from kafka: $it" } }
             .advanceIf { !it.isExpired() }
             .execute {
                 removed.put(it.id(), it.isRemoved())
