@@ -93,6 +93,7 @@ suspend fun publish(t: ScheduledTask) {
     }
     val isRemoved = removed[t.id()]
     if (isRemoved != null && isRemoved) {
+        logger.info { "Task is removed ${t.idAsString()} removed size ${removed.size}"}
         return
     }
     val d = t.data()
