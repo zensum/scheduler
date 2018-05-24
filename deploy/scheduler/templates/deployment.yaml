@@ -16,6 +16,14 @@ spec:
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         env:
+          - name: JAVA_TOOL_OPTIONS
+          {{- $max := 15 | sub ((100 | div ((.Values.resources.limits.memory | replace "Mi" "" | mul 95 | int)))) -}}
+          {{- $initial := 15 | sub (( .Values.resources.requests.memory | replace "Mi" "" | int)) -}}
+          {{- if gt $initial $max }}
+          value: "-Xmx{{ $max }}m -Xms{{ $max }}m"
+          {{- else }}
+          value: "-Xmx{{ $max }}m -Xms{{ $initial }}m"
+          {{- end }}
         - name: KAFKA_HOST
           value: {{ .Values.env.kafkaHost }}
         - name: SECRET_STORE_HOST
