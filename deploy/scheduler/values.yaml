@@ -11,5 +11,5 @@ resources:
     cpu: 100m
     memory: 128Mi
 env:
-  kafkaHost: operated-kafka-kafka:9092
+  kafkaHost: operated-kafka2-kafka-bootstrap.kafka.svc.cluster.local:9092
   idempotenceStoreUrl: "svc-idempotence-store-idempotence-store"
